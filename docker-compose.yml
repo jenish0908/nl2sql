@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nl2sql_postgres
+    environment:
+      POSTGRES_USER: nl2sql
+      POSTGRES_PASSWORD: nl2sql
+      POSTGRES_DB: nl2sql_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nl2sql -d nl2sql_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build: .
+    container_name: nl2sql_app
+    command: ["./entrypoint.sh"]
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://nl2sql:nl2sql@postgres:5432/nl2sql_db
+      SYNC_DATABASE_URL: postgresql://nl2sql:nl2sql@postgres:5432/nl2sql_db
+      GROQ_API_KEY: ${GROQ_API_KEY}
+    env_file:
+      - .env
+    restart: on-failure
+
+  streamlit:
+    build: .
+    container_name: nl2sql_streamlit
+    command: ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+    ports:
+      - "8501:8501"
+    depends_on:
+      - app
+    environment:
+      API_URL: http://app:8000
+    env_file:
+      - .env
+    restart: on-failure
+
+volumes:
+  postgres_data:
